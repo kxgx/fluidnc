@@ -5,8 +5,15 @@ on:
   push:
     branches: [ main ]  # 推送到main分支时触发 / Trigger on push to main branch
     tags: [ 'v*' ]      # 创建版本标签时触发 / Trigger on version tag creation
-    paths-ignore:       # 忽略以下路径的更改 / Ignore changes to these paths
-      - '.github/workflows/**'  # 工作流文件本身 / Workflow files themselves
+    paths:              # 仅监控以下路径的更改 / Only monitor changes to these paths
+      - 'FluidNC/**'           # FluidNC源代码 / FluidNC source code
+      - 'platformio.ini'       # PlatformIO配置 / PlatformIO configuration
+      - 'sdkconfig.defaults'   # ESP-IDF配置 / ESP-IDF configuration
+      - 'requirements.txt'     # Python依赖 / Python dependencies
+      - 'git-version.py'       # 版本生成脚本 / Version generation script
+      - 'data/**'              # 配置文件 / Configuration files
+      - '!**.md'               # 排除Markdown文档 / Exclude Markdown docs
+      - '!**.txt'              # 排除文本文件（除requirements.txt）/ Exclude text files (except requirements.txt)
   workflow_dispatch:    # 允许手动触发 / Allow manual trigger
 
 jobs:
