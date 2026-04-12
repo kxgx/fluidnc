@@ -126,7 +126,11 @@ jobs:
           
           # 生成校验和
           cd current
-          sha256sum *.bin > SHA256SUMS.txt 2>/dev/null || true
+          if ls *.bin 1> /dev/null 2>&1; then
+            sha256sum *.bin > SHA256SUMS.txt
+          else
+            echo "# No binary files found" > SHA256SUMS.txt
+          fi
       
       - name: 上传发布包构件
         uses: actions/upload-artifact@v4
@@ -157,9 +161,13 @@ jobs:
         run: |
           cd release
           ls -lh
-          # 生成SHA256校验和（如果不存在）
-          if [ ! -f SHA256SUMS.txt ]; then
-            sha256sum *.bin > SHA256SUMS.txt 2>/dev/null || true
+          # 生成SHA256校验和（如果不存在或为空）
+          if [ ! -s SHA256SUMS.txt ]; then
+            sha256sum *.bin > SHA256SUMS.txt 2>/dev/null || echo "No bin files found" > SHA256SUMS.txt
+          fi
+          # 确保文件不为空
+          if [ ! -s SHA256SUMS.txt ]; then
+            echo "# No checksums available" > SHA256SUMS.txt
           fi
       
       - name: 创建GitHub Release
