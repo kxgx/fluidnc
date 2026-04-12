@@ -171,3 +171,35 @@ jobs:
           tag_name: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-to-release:
+    name: 上传构件（分支推送时）
+    # 分支推送时的处理（非标签）- 仅上传构件，不创建Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')  # 仅main分支且非标签
+    
+    steps:
+      - name: 下载所有构件
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: 列出已构建的固件
+        run: |
+          echo "已构建的固件文件："
+          find artifacts -name "*.bin" -o -name "*.elf" | sort
+      
+      - name: 显示构建摘要
+        run: |
+          echo "## 构建摘要" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ 所有配置的固件构建成功（未创建Release）" >> $GITHUB_STEP_SUMMARY
+          echo "💡 可通过Actions页面下载构件" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 配置 | 状态 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          for dir in artifacts/*/; do
+            config=$(basename "$dir")
+            echo "| $config | ✅ 成功 |" >> $GITHUB_STEP_SUMMARY
+          done
