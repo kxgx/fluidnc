@@ -1,0 +1,117 @@
+name: FluidNC 持续集成
+
+on:
+  pull_request:  # 拉取请求时触发
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    # 构建任务
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+        # - macos-latest
+        # - windows-latest
+        pio_env:
+          - wifi  # WiFi配置
+        # - bt  # 蓝牙配置
+        # - noradio  # 无无线电配置
+        # - wifibt  # WiFi+蓝牙配置
+        # - debug  # 调试配置
+        pio_env_variant:
+          - ""  # ESP32标准版
+          - "_s3"  # ESP32-S3版本
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3  # 检出代码
+      
+      - name: 设置Python环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+          cache: "pip"  # 启用pip缓存
+      
+      - name: 安装PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: 缓存PlatformIO
+        uses: actions/cache@v3
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}
+      
+      - name: 构建目标 ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
+        run: pio run -e ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
+      
+      - if: matrix.os == 'ubuntu-latest'
+        name: 生成地址信息文件 ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
+        run: |
+          python tools/stack_trace_decoder/generate_addrinfo.py \
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.elf \
+            -o .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.addrinfo \
+            --build ${{ matrix.pio_env }}${{ matrix.pio_env_variant }} \
+            --verbose
+      
+      - if: matrix.os == 'ubuntu-latest'
+        name: 上传固件 ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}_固件
+          path: |
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.*
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/partitions.bin
+
+  tests:
+    # 测试任务
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            pio_env: tests
+          - os: macos-latest
+            pio_env: tests
+          - os: windows-latest
+            pio_env: tests
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3  # 检出代码
+      
+      # Windows使用内置gcc运行gtest有问题，因此安装MSYS2
+      - if: matrix.os == 'windows-latest'
+        name: 安装MSYS2（Windows）
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          location: D:\
+          install: mingw-w64-ucrt-x86_64-gcc
+      
+      - name: 设置Python环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+          cache: "pip"
+      
+      - name: 安装PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: 缓存PlatformIO
+        uses: actions/cache@v3
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}
+
+      # Windows需要单独的运行任务，因为内置gcc有问题
+      - if: matrix.os == 'windows-latest'
+        name: 运行测试（Windows）
+        run: |
+          $env:PATH = "D:\msys64\mingw64\bin;D:\msys64\usr\bin;D:\msys64\ucrt64\bin;" + $env:PATH
+          pio test -e ${{ matrix.pio_env }} -vv
+      
+      - if: matrix.os != 'windows-latest'
+        name: 运行测试
+        run: pio test -e ${{ matrix.pio_env }} -vv

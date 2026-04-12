@@ -1,0 +1,89 @@
+name: 解码堆栈跟踪
+
+on:
+  workflow_dispatch:  # 手动触发
+    inputs:
+      stack_trace:
+        description: "粘贴完整的Backtrace行"
+        required: true  # 必填
+        type: string
+      elf_url:
+        description: "ELF文件URL（例如：esp32-wifi-firmware.elf）"
+        required: true  # 必填
+        default: "https://github.com/bdring/FluidNC/releases/download/v4.0.2-pre3/esp32-wifi-firmware.elf"
+        type: string
+      toolchain_target:
+        description: "目标工具链（esp32或esp32s3）"
+        required: true  # 必填
+        default: "esp32"
+        type: choice
+        options:
+          - esp32
+          - esp32s3
+      toolchain_url:
+        description: "可选：覆盖工具链tarball URL"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read  # 读取仓库内容权限
+
+jobs:
+  decode:
+    # 解码任务
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载ELF文件
+        run: |
+          curl -L -o firmware.elf "${{ inputs.elf_url }}"
+          ls -lh firmware.elf
+
+      - name: 安装工具链（addr2line）
+        run: |
+          if [ -n "${{ inputs.toolchain_url }}" ]; then
+            TOOLCHAIN_URL="${{ inputs.toolchain_url }}"
+          else
+            if [ "${{ inputs.toolchain_target }}" = "esp32s3" ]; then
+              TOOLCHAIN_URL="https://github.com/espressif/esp-idf/releases/download/v5.1/xtensa-esp32s3-elf-13.2.0_20230928-linux-amd64.tar.xz"
+              ADDR2LINE_NAME="xtensa-esp32s3-elf-addr2line"
+            else
+              TOOLCHAIN_URL="https://github.com/espressif/esp-idf/releases/download/v5.1/xtensa-esp32-elf-13.2.0_20230928-linux-amd64.tar.xz"
+              ADDR2LINE_NAME="xtensa-esp32-elf-addr2line"
+            fi
+          fi
+          echo "ADDR2LINE_NAME=${ADDR2LINE_NAME:-xtensa-esp32-elf-addr2line}" >> $GITHUB_ENV
+          curl -L -o toolchain.tar.xz "$TOOLCHAIN_URL"
+          mkdir -p toolchain
+          tar -xf toolchain.tar.xz -C toolchain
+          echo "TOOLCHAIN_BIN=$(find toolchain -type d -name 'bin' | head -n 1)" >> $GITHUB_ENV
+
+      - name: 解码回溯信息
+        env:
+          STACK_TRACE: ${{ inputs.stack_trace }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess, textwrap
+          stack = os.environ.get('STACK_TRACE', '')
+          addrs = re.findall(r'0x[0-9a-fA-F]{8}', stack)
+          if not addrs:
+            raise SystemExit('未在堆栈跟踪中找到地址。')
+          addr2line_name = os.environ.get('ADDR2LINE_NAME', 'xtensa-esp32-elf-addr2line')
+          addr2line = os.path.join(os.environ['TOOLCHAIN_BIN'], addr2line_name)
+          cmd = [addr2line, '-e', 'firmware.elf', '-f', '-C', *addrs]
+          print('命令:', ' '.join(cmd))
+          out = subprocess.check_output(cmd, text=True)
+          with open('decoded.txt', 'w', encoding='utf-8') as f:
+            f.write(out)
+          print('\n解码输出:\n')
+          print(out)
+          PY
+
+      - name: 上传解码结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: 解码后的堆栈跟踪
+          path: decoded.txt

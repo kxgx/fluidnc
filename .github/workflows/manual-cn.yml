@@ -1,0 +1,87 @@
+name: FluidNC 发布构建器
+
+on:
+  workflow_dispatch:  # 手动触发
+    inputs:
+      tag:
+        description: '发布版本号'
+        required: true  # 必填
+
+jobs:
+  build:
+    # 构建任务
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2  # 检出代码
+    
+    - name: 缓存pip
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: 缓存PlatformIO
+      uses: actions/cache@v4
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
+    
+    - name: 设置Python环境
+      uses: actions/setup-python@v2
+    
+    - name: 安装PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install --upgrade platformio
+    
+    - name: 设置发布版本
+      run: |
+        git config user.email "wmb@firmworks.com"
+        git config user.name "Mitch Bradley"
+        git tag "${{ github.event.inputs.tag }}" -a -m "Release test"
+    
+    - name: 构建
+      run: python build-release.py
+    
+    - name: 创建Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.tag }}
+        files: |
+          release/*.zip
+          release/*.elf
+        draft: True  # 创建为草稿
+    
+    - name: 部署到fluidnc-releases仓库
+      uses: datalbry/copy_folder_to_another_repo_action@1.0.0
+      env:
+        API_TOKEN_GITHUB: ${{ secrets.RELEASE_COPY_TOKEN }}
+      with:
+        source_folder: 'release/current'
+        destination_repo: 'bdring/fluidnc-releases'
+        destination_branch: 'main'
+        destination_folder: releases/${{ github.event.inputs.tag }}
+        user_email: bdring@buildlog.net
+        user_name: 'Bart Dring'
+        commit_msg: Release ${{ github.event.inputs.tag }}
+    
+    # - name: 上传macOS包
+    #   uses: actions/upload-artifact@v2
+    #   with:
+    #     name: release-macos
+    #     path: release/*macos*
+    
+    # - name: 上传Windows包
+    #   uses: actions/upload-artifact@v2
+    #   with:
+    #     name: release-win32
+    #     path: release/*win*
+    
+    # - name: 上传Linux包
+    #   uses: actions/upload-artifact@v2
+    #   with:
+    #     name: release-linux
+    #     path: release/*linux*
