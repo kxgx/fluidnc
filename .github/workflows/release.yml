@@ -1,38 +1,43 @@
 name: Build and Release Firmware
+# 构建和发布固件
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
-  workflow_dispatch:
+    branches: [ main ]  # 推送到main分支时触发 / Trigger on push to main branch
+    tags: [ 'v*' ]      # 创建版本标签时触发 / Trigger on version tag creation
+  workflow_dispatch:    # 允许手动触发 / Allow manual trigger
 
 jobs:
   build:
     name: Build ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
+    # 构建任务 / Build job
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pio_env: [ wifi ]
-        pio_env_variant: [ "", "_s3" ]
+        pio_env: [ wifi ]              # WiFi配置 / WiFi configuration
+        pio_env_variant: [ "", "_s3" ] # ESP32和ESP32-S3变体 / ESP32 and ESP32-S3 variants
     
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: recursive  # 递归克隆子模块 / Recursively clone submodules
       
       - name: Set up Python
+        # 设置Python环境 / Set up Python environment
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+          cache: "pip"  # 启用pip缓存 / Enable pip caching
       
       - name: Install PlatformIO
+        # 安装PlatformIO构建工具 / Install PlatformIO build tools
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install intelhex
+          pip install intelhex  # 生成bootloader所需 / Required for bootloader generation
       
       - name: Cache PlatformIO
+        # 缓存PlatformIO依赖以加速构建 / Cache PlatformIO dependencies for faster builds
         uses: actions/cache@v4
         with:
           path: ~/.platformio
@@ -41,9 +46,11 @@ jobs:
             platformio-${{ runner.os }}-
       
       - name: Build firmware
+        # 编译固件 / Compile firmware
         run: pio run -e ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
       
       - name: Generate addrinfo
+        # 生成地址信息文件用于堆栈跟踪解码 / Generate addrinfo file for stack trace decoding
         run: |
           python tools/stack_trace_decoder/generate_addrinfo.py \
             .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.elf \
@@ -52,22 +59,24 @@ jobs:
             --verbose
       
       - name: Upload firmware artifact
+        # 上传固件构件 / Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
           name: fluidnc-${{ matrix.pio_env }}${{ matrix.pio_env_variant }}-firmware
           path: |
-            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.bin
-            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.elf
-            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.addrinfo
-            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/partitions.bin
-            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/bootloader.bin
-          retention-days: 30
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.bin      # 主固件 / Main firmware
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.elf      # ELF调试文件 / ELF debug file
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.addrinfo # 地址信息 / Address info
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/partitions.bin    # 分区表 / Partition table
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/bootloader.bin    # 引导加载程序 / Bootloader
+          retention-days: 30  # 保留30天 / Retain for 30 days
 
   release:
     name: Create Release
+    # 创建GitHub Release（仅当打标签时）/ Create GitHub Release (only when tagged)
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/')  # 仅在标签推送时执行 / Only run on tag push
     
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +87,7 @@ jobs:
           path: artifacts
       
       - name: Prepare release assets
+        # 准备发布资源 / Prepare release assets
         run: |
           mkdir -p release
           for dir in artifacts/*/; do
@@ -87,23 +97,25 @@ jobs:
           done
           cd release
           # Create checksums
-          sha256sum *.bin > SHA256SUMS.txt
+          sha256sum *.bin > SHA256SUMS.txt  # 生成SHA256校验和 / Generate SHA256 checksums
       
       - name: Create GitHub Release
+        # 创建GitHub Release / Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: release/*
-          draft: false
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
-          generate_release_notes: true
+          draft: false                                    # 非草稿 / Not a draft
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}  # 预发布标记 / Prerelease flag
+          generate_release_notes: true                    # 自动生成发布说明 / Auto-generate release notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   upload-to-release:
     name: Upload to Release (for branch pushes)
+    # 分支推送时的处理（非标签）/ Handle branch pushes (non-tag)
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+    if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')  # 仅main分支且非标签 / Only main branch and not a tag
     
     steps:
       - name: Download all artifacts
@@ -112,11 +124,13 @@ jobs:
           path: artifacts
       
       - name: List built firmware
+        # 列出已构建的固件 / List built firmware
         run: |
           echo "Built firmware files:"
           find artifacts -name "*.bin" -o -name "*.elf" | sort
       
       - name: Display summary
+        # 显示构建摘要 / Display build summary
         run: |
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
