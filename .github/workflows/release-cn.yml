@@ -173,7 +173,7 @@ jobs:
             release/*.elf
             release/SHA256SUMS.txt
           draft: false                                    # 非草稿（设为true可先预览）
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}  # 预发布标记
+          prerelease: false                               # 非预发布版本（始终为正式版本）
           generate_release_notes: true                    # 自动生成发布说明
           tag_name: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}
         env:
