@@ -1,0 +1,130 @@
+name: Build and Release Firmware
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pio_env: [ wifi ]
+        pio_env_variant: [ "", "_s3" ]
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install intelhex
+      
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
+      
+      - name: Build firmware
+        run: pio run -e ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
+      
+      - name: Generate addrinfo
+        run: |
+          python tools/stack_trace_decoder/generate_addrinfo.py \
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.elf \
+            -o .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.addrinfo \
+            --build ${{ matrix.pio_env }}${{ matrix.pio_env_variant }} \
+            --verbose
+      
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluidnc-${{ matrix.pio_env }}${{ matrix.pio_env_variant }}-firmware
+          path: |
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.bin
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.elf
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.addrinfo
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/partitions.bin
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/bootloader.bin
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          for dir in artifacts/*/; do
+            cp "$dir"/*.bin release/ 2>/dev/null || true
+            cp "$dir"/*.elf release/ 2>/dev/null || true
+            cp "$dir"/*.addrinfo release/ 2>/dev/null || true
+          done
+          cd release
+          # Create checksums
+          sha256sum *.bin > SHA256SUMS.txt
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          draft: false
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-to-release:
+    name: Upload to Release (for branch pushes)
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: List built firmware
+        run: |
+          echo "Built firmware files:"
+          find artifacts -name "*.bin" -o -name "*.elf" | sort
+      
+      - name: Display summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Firmware built successfully for all configurations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Configuration | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------------|--------|" >> $GITHUB_STEP_SUMMARY
+          for dir in artifacts/*/; do
+            config=$(basename "$dir")
+            echo "| $config | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          done
