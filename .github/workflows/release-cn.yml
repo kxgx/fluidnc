@@ -5,6 +5,10 @@ on:
   push:
     branches: [ main ]  # 推送到main分支时触发
     tags: [ 'v*' ]      # 创建版本标签时触发（主要触发方式）
+    paths-ignore:       # 忽略以下路径的更改
+      - '.github/workflows/**'  # 工作流文件本身
+      - '**.md'                 # Markdown文档
+      - 'docs/**'               # 文档目录
   workflow_dispatch:    # 允许手动触发
     inputs:
       tag:
