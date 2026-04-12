@@ -22,192 +22,198 @@
 # 注意：GPIO33和GPIO34已通过源码修改启用输出功能
 # ============================================================================
 
-# FluidNC 配置文件 - 微雪 ESP32-S3-PICO
-# 3轴笛卡尔坐标系 (X, Y双电机并联, Z)
-# 使用标准STEP/DIR/EN控制（无TMC驱动器）
-#
-# Y轴配置：
-#   - Motor0: DIR=GPIO14, STEP=GPIO18, EN=GPIO36 (主电机)
-#   - Motor1: DIR=GPIO16, STEP=GPIO34, EN=GPIO38 (副电机，与主电机联动)
-#
-# 注意：GPIO33和GPIO34已通过源码修改启用输出功能
-
-name: "Waveshare ESP32-S3-PICO CNC"
+name: "微雪 ESP32-S3-PICO CNC控制器"
 
 board: ESP32-S3-PICO
 
+# 步进电机脉冲配置
 stepping:
-  engine: RMT
-  idle_ms: 250
-  dir_delay_us: 1
-  pulse_us: 4
-  disable_delay_us: 0
+  engine: RMT                    # 使用RMT引擎生成脉冲（ESP32-S3推荐）
+  idle_ms: 250                   # 电机空闲后250ms禁用驱动器
+  dir_delay_us: 1                # 方向信号延迟1微秒
+  pulse_us: 4                    # 脉冲宽度4微秒
+  disable_delay_us: 0            # 禁用延迟0微秒
 
+# 坐标轴配置
 axes:
-  shared_stepper_disable_pin: NO_PIN
+  shared_stepper_disable_pin: NO_PIN  # 不使用共享的禁用引脚（每个电机独立控制）
   
+  # X轴配置
   x:
-    steps_per_mm: 80.000
-    max_rate_mm_per_min: 5000.000
-    acceleration_mm_per_sec2: 100.000
-    max_travel_mm: 300.000
-    soft_limits: false
-    homing:
-      cycle: 2
-      positive_direction: false
-      mpos_mm: 0.000
-      feed_mm_per_min: 100.000
-      seek_mm_per_min: 500.000
-      settle_ms: 500
-      seek_scaler: 1.100
-      feed_scaler: 1.100
+    steps_per_mm: 80.000              # 每毫米步数（根据丝杆螺距和细分设置调整）
+    max_rate_mm_per_min: 5000.000     # 最大速度 5000 mm/min
+    acceleration_mm_per_sec2: 100.000 # 加速度 100 mm/s²
+    max_travel_mm: 300.000            # 最大行程 300mm
+    soft_limits: false                # 关闭软限位（使用硬限位开关）
+    homing:                           # 回零配置
+      cycle: 2                        # 回零顺序第2组
+      positive_direction: false       # 回零方向为负方向
+      mpos_mm: 0.000                  # 回零后的机械坐标
+      feed_mm_per_min: 100.000        # 回零进给速度 100 mm/min
+      seek_mm_per_min: 500.000        # 回零搜索速度 500 mm/min
+      settle_ms: 500                  # 回零后稳定时间 500ms
+      seek_scaler: 1.100              # 搜索速度缩放系数
+      feed_scaler: 1.100              # 进给速度缩放系数
 
-    motor0:
-      limit_neg_pin: gpio.1
-      limit_pos_pin: NO_PIN
-      limit_all_pin: NO_PIN
-      hard_limits: false
-      pulloff_mm: 1.000
-      standard_stepper:
-        step_pin: gpio.17
-        direction_pin: gpio.13
-        disable_pin: gpio.35
+    motor0:                           # X轴电机0（唯一电机）
+      limit_neg_pin: gpio.1           # 负向限位开关连接到GPIO1
+      limit_pos_pin: NO_PIN           # 无正向限位开关
+      limit_all_pin: NO_PIN           # 无双向限位开关
+      hard_limits: false              # 限位触发时不停机，仅报警
+      pulloff_mm: 1.000               # 限位触发后退回1mm
+      standard_stepper:               # 标准步进电机驱动器
+        step_pin: gpio.17             # 步进脉冲引脚 GPIO17
+        direction_pin: gpio.13        # 方向控制引脚 GPIO13
+        disable_pin: gpio.35          # 使能控制引脚 GPIO35
 
+  # Y轴配置（双电机并联）
   y:
-    steps_per_mm: 80.000
-    max_rate_mm_per_min: 5000.000
-    acceleration_mm_per_sec2: 100.000
-    max_travel_mm: 300.000
-    soft_limits: false
-    homing:
-      cycle: 2
-      positive_direction: false
-      mpos_mm: 0.000
-      feed_mm_per_min: 100.000
-      seek_mm_per_min: 500.000
-      settle_ms: 500
-      seek_scaler: 1.100
-      feed_scaler: 1.100
+    steps_per_mm: 80.000              # 每毫米步数
+    max_rate_mm_per_min: 5000.000     # 最大速度 5000 mm/min
+    acceleration_mm_per_sec2: 100.000 # 加速度 100 mm/s²
+    max_travel_mm: 300.000            # 最大行程 300mm
+    soft_limits: false                # 关闭软限位
+    homing:                           # 回零配置
+      cycle: 2                        # 回零顺序第2组（与X轴同时回零）
+      positive_direction: false       # 回零方向为负方向
+      mpos_mm: 0.000                  # 回零后的机械坐标
+      feed_mm_per_min: 100.000        # 回零进给速度
+      seek_mm_per_min: 500.000        # 回零搜索速度
+      settle_ms: 500                  # 稳定时间
+      seek_scaler: 1.100              # 搜索速度缩放
+      feed_scaler: 1.100              # 进给速度缩放
 
-    # Y轴主电机 (Motor 0)
+    # Y轴主电机 (Motor 0) - 左侧电机
     motor0:
-      limit_neg_pin: gpio.2
-      limit_pos_pin: NO_PIN
-      limit_all_pin: NO_PIN
-      hard_limits: false
-      pulloff_mm: 1.000
-      standard_stepper:
-        step_pin: gpio.18
-        direction_pin: gpio.14
-        disable_pin: gpio.36
+      limit_neg_pin: gpio.2           # 负向限位开关连接到GPIO2（主限位）
+      limit_pos_pin: NO_PIN           # 无正向限位
+      limit_all_pin: NO_PIN           # 无双向限位
+      hard_limits: false              # 限位触发时不停机
+      pulloff_mm: 1.000               # 限位触发后退回1mm
+      standard_stepper:               # 标准步进驱动器
+        step_pin: gpio.18             # 步进脉冲 GPIO18
+        direction_pin: gpio.14        # 方向控制 GPIO14
+        disable_pin: gpio.36          # 使能控制 GPIO36
 
-    # Y轴副电机 (Motor 1) - 与主电机并联联动
+    # Y轴副电机 (Motor 1) - 右侧电机，与主电机同步运动
     motor1:
-      limit_neg_pin: NO_PIN
+      limit_neg_pin: NO_PIN           # 副电机无限位开关（共用主电机限位）
       limit_pos_pin: NO_PIN
       limit_all_pin: NO_PIN
       hard_limits: false
       pulloff_mm: 1.000
-      standard_stepper:
-        step_pin: gpio.34
-        direction_pin: gpio.16
-        disable_pin: gpio.38
+      standard_stepper:               # 标准步进驱动器
+        step_pin: gpio.34             # 步进脉冲 GPIO34（需源码启用）
+        direction_pin: gpio.16        # 方向控制 GPIO16
+        disable_pin: gpio.38          # 使能控制 GPIO38
 
+  # Z轴配置
   z:
-    steps_per_mm: 80.000
-    max_rate_mm_per_min: 5000.000
-    acceleration_mm_per_sec2: 100.000
-    max_travel_mm: 100.000
-    soft_limits: false
-    homing:
-      cycle: 1
-      positive_direction: true
-      mpos_mm: 0.000
-      feed_mm_per_min: 100.000
-      seek_mm_per_min: 500.000
-      settle_ms: 500
-      seek_scaler: 1.100
-      feed_scaler: 1.100
+    steps_per_mm: 80.000              # 每毫米步数
+    max_rate_mm_per_min: 5000.000     # 最大速度 5000 mm/min
+    acceleration_mm_per_sec2: 100.000 # 加速度 100 mm/s²
+    max_travel_mm: 100.000            # 最大行程 100mm
+    soft_limits: false                # 关闭软限位
+    homing:                           # 回零配置
+      cycle: 1                        # 回零顺序第1组（先回Z轴）
+      positive_direction: true        # 回零方向为正方向（向上）
+      mpos_mm: 0.000                  # 回零后的机械坐标
+      feed_mm_per_min: 100.000        # 回零进给速度
+      seek_mm_per_min: 500.000        # 回零搜索速度
+      settle_ms: 500                  # 稳定时间
+      seek_scaler: 1.100              # 搜索速度缩放
+      feed_scaler: 1.100              # 进给速度缩放
 
-    motor0:
-      limit_neg_pin: gpio.4
-      limit_pos_pin: NO_PIN
-      limit_all_pin: NO_PIN
-      hard_limits: false
-      pulloff_mm: 1.000
-      standard_stepper:
-        step_pin: gpio.33
-        direction_pin: gpio.15
-        disable_pin: gpio.37
+    motor0:                           # Z轴电机
+      limit_neg_pin: gpio.4           # 负向限位开关连接到GPIO4（底部限位）
+      limit_pos_pin: NO_PIN           # 无正向限位
+      limit_all_pin: NO_PIN           # 无双向限位
+      hard_limits: false              # 限位触发时不停机
+      pulloff_mm: 1.000               # 限位触发后退回1mm
+      standard_stepper:               # 标准步进驱动器
+        step_pin: gpio.33             # 步进脉冲 GPIO33（需源码启用）
+        direction_pin: gpio.15        # 方向控制 GPIO15
+        disable_pin: gpio.37          # 使能控制 GPIO37
 
+# 启动配置
 start:
-  must_home: false
+  must_home: false                    # 启动时不强制回零
 
+# I2SO总线配置（未使用）
 i2so:
   bck_pin: NO_PIN
   data_pin: NO_PIN
   ws_pin: NO_PIN
 
+# SPI总线配置（未使用）
 spi:
   miso_pin: NO_PIN
   mosi_pin: NO_PIN
   sck_pin: NO_PIN
 
+# SD卡配置（未使用）
 sdcard:
   cs_pin: NO_PIN
   card_detect_pin: NO_PIN
 
+# 控制面板配置（未使用）
 control:
-  safety_door_pin: NO_PIN
-  reset_pin: NO_PIN
-  feed_hold_pin: NO_PIN
-  cycle_start_pin: NO_PIN
-  macro0_pin: NO_PIN
-  macro1_pin: NO_PIN
-  macro2_pin: NO_PIN
-  macro3_pin: NO_PIN
+  safety_door_pin: NO_PIN             # 安全门开关
+  reset_pin: NO_PIN                   # 复位按钮
+  feed_hold_pin: NO_PIN               # 进给保持按钮
+  cycle_start_pin: NO_PIN             # 循环启动按钮
+  macro0_pin: NO_PIN                  # 宏按钮0
+  macro1_pin: NO_PIN                  # 宏按钮1
+  macro2_pin: NO_PIN                  # 宏按钮2
+  macro3_pin: NO_PIN                  # 宏按钮3
 
+# 冷却液配置（未使用）
 coolant:
-  flood_pin: NO_PIN
-  mist_pin: NO_PIN
-  delay_ms: 0
+  flood_pin: NO_PIN                   # 水冷输出
+  mist_pin: NO_PIN                    # 雾冷输出
+  delay_ms: 0                         # 延迟时间
 
+# 探针配置（未使用）
 probe:
-  pin: NO_PIN
-  check_mode_start: true
+  pin: NO_PIN                         # 探针输入引脚
+  check_mode_start: true              # 启动时检查探针模式
 
+# 宏命令配置（未使用）
 macros:
-  startup_line0:
-  startup_line1:
-  macro0:
-  macro1:
-  macro2:
-  macro3:
+  startup_line0:                      # 启动执行行0
+  startup_line1:                      # 启动执行行1
+  macro0:                             # 宏命令0
+  macro1:                             # 宏命令1
+  macro2:                             # 宏命令2
+  macro3:                             # 宏命令3
 
+# 用户自定义输出（未使用）
 user_outputs:
-  analog0_pin: NO_PIN
-  analog1_pin: NO_PIN
-  analog2_pin: NO_PIN
-  analog3_pin: NO_PIN
-  analog0_hz: 5000
+  analog0_pin: NO_PIN                 # 模拟输出0
+  analog1_pin: NO_PIN                 # 模拟输出1
+  analog2_pin: NO_PIN                 # 模拟输出2
+  analog3_pin: NO_PIN                 # 模拟输出3
+  analog0_hz: 5000                    # PWM频率 5kHz
   analog1_hz: 5000
   analog2_hz: 5000
   analog3_hz: 5000
-  digital0_pin: NO_PIN
-  digital1_pin: NO_PIN
-  digital2_pin: NO_PIN
-  digital3_pin: NO_PIN
+  digital0_pin: NO_PIN                # 数字输出0
+  digital1_pin: NO_PIN                # 数字输出1
+  digital2_pin: NO_PIN                # 数字输出2
+  digital3_pin: NO_PIN                # 数字输出3
 
+# 激光配置
 Laser:
-  pwm_hz: 5000
-  output_pin: gpio.12
-  enable_pin: NO_PIN
-  disable_with_s0: false
-  s0_with_disable: true
-  tool_num: 0
-  speed_map: 0=0.000% 255=100.000%
-  off_on_alarm: false
+  pwm_hz: 5000                        # PWM频率 5kHz
+  output_pin: gpio.12                 # 激光功率输出 GPIO12
+  enable_pin: NO_PIN                  # 无独立使能引脚
+  disable_with_s0: false              # S0时不禁用激光器
+  s0_with_disable: true               # 禁用时输出S0
+  tool_num: 0                         # 工具编号0
+  speed_map: 0=0.000% 255=100.000%   # 速度映射：S0=0%, S255=100%
+  off_on_alarm: false                 # 报警时不关闭激光
 
+# I2C总线配置（用于扩展模块）
 i2c0:
-  sda_pin: gpio.42
-  scl_pin: gpio.41
+  sda_pin: gpio.42                    # I2C数据线 GPIO42
+  scl_pin: gpio.41                    # I2C时钟线 GPIO41
