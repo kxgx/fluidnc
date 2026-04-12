@@ -1,0 +1,209 @@
+name: Build and Release Firmware
+# Automated version - triggers only on version changes
+
+on:
+  push:
+    branches: [ main ]  # Trigger on push to main branch
+    tags: [ 'v*' ]      # Trigger on version tag creation (main trigger)
+    paths-ignore:       # Ignore changes to these paths
+      - '.github/workflows/**'  # Workflow files themselves
+      - '**.md'                 # Markdown documents
+      - 'docs/**'               # Documentation directory
+  workflow_dispatch:    # Allow manual trigger
+    inputs:
+      tag:
+        description: 'Release version (optional, leave empty to use current git tag)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    name: Build ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
+    # Build job
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pio_env: [ wifi ]              # WiFi configuration
+        pio_env_variant: [ "", "_s3" ] # ESP32 and ESP32-S3 variants
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive  # Recursively clone submodules
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"  # Enable pip caching
+      
+      - name: Install PlatformIO
+        # Install PlatformIO build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio
+          pip install intelhex  # Required for bootloader generation
+      
+      - name: Cache PlatformIO
+        # Cache PlatformIO dependencies for faster builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
+      
+      - name: Build firmware
+        run: pio run -e ${{ matrix.pio_env }}${{ matrix.pio_env_variant }}
+      
+      - name: Generate addrinfo
+        # Generate addrinfo file for stack trace decoding
+        run: |
+          python tools/stack_trace_decoder/generate_addrinfo.py \
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.elf \
+            -o .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.addrinfo \
+            --build ${{ matrix.pio_env }}${{ matrix.pio_env_variant }} \
+            --verbose
+      
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluidnc-${{ matrix.pio_env }}${{ matrix.pio_env_variant }}-firmware
+          path: |
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.bin      # Main firmware
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.elf      # ELF debug file
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/firmware.addrinfo # Address info
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/partitions.bin    # Partition table
+            .pio/build/${{ matrix.pio_env }}${{ matrix.pio_env_variant }}/bootloader.bin    # Bootloader
+          retention-days: 30  # Retain for 30 days
+
+  package:
+    name: Package release files
+    # Package job (executes after all builds complete)
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Download all firmware artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Set version number
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "RELEASE_TAG=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "RELEASE_TAG=dev-$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create release package
+        run: |
+          mkdir -p release/current
+          VERSION="${{ steps.version.outputs.RELEASE_TAG }}"
+          
+          # Copy all firmware files
+          for dir in artifacts/*/; do
+            config=$(basename "$dir")
+            cp "$dir"/*.bin release/current/ 2>/dev/null || true
+            cp "$dir"/*.elf release/current/ 2>/dev/null || true
+          done
+          
+          # Create zip archive
+          cd release
+          zip -r "fluidnc-${VERSION}-firmware.zip" current/
+          
+          # Generate checksums
+          cd current
+          sha256sum *.bin > SHA256SUMS.txt 2>/dev/null || true
+      
+      - name: Upload release package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluidnc-release-package
+          path: |
+            release/*.zip
+            release/current/*.elf
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    # Create GitHub Release (only on tag push or manual trigger)
+    needs: package  # Depends on package job
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'  # Only on tag or manual trigger
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download release package
+        uses: actions/download-artifact@v4
+        with:
+          name: fluidnc-release-package
+          path: release
+      
+      - name: Prepare release assets
+        run: |
+          cd release
+          ls -lh
+          # Generate SHA256 checksums (if not exists)
+          if [ ! -f SHA256SUMS.txt ]; then
+            sha256sum *.bin > SHA256SUMS.txt 2>/dev/null || true
+          fi
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/*.zip
+            release/*.elf
+            release/SHA256SUMS.txt
+          draft: false                                    # Not a draft (set to true for preview)
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') || contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}  # Prerelease flag
+          generate_release_notes: true                    # Auto-generate release notes
+          tag_name: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-to-release:
+    name: Upload artifacts (on branch push)
+    # Handle branch pushes (non-tag) - only upload artifacts, no Release created
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')  # Only main branch and not a tag
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: List built firmware
+        run: |
+          echo "Built firmware files:"
+          find artifacts -name "*.bin" -o -name "*.elf" | sort
+      
+      - name: Display build summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ All firmware configurations built successfully (no Release created)" >> $GITHUB_STEP_SUMMARY
+          echo "💡 Download artifacts from Actions page" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Configuration | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------------|--------|" >> $GITHUB_STEP_SUMMARY
+          for dir in artifacts/*/; do
+            config=$(basename "$dir")
+            echo "| $config | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          done
