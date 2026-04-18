@@ -114,7 +114,7 @@ user_outputs:
   digital3_pin: NO_PIN
 Laser:
   pwm_hz: 10000
-  output_pin: gpio.12
+  output_pin: gpio.11
   enable_pin: NO_PIN
   disable_with_s0: false
   s0_with_disable: true
@@ -128,6 +128,6 @@ oled:
   height: 64
   radio_delay_ms: 0
 i2c0:
-  sda_pin: gpio.42
-  scl_pin: gpio.41
+  sda_pin: gpio.8
+  scl_pin: gpio.9
   frequency: 400000
