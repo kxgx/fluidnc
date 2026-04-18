@@ -10,7 +10,7 @@ on:
       elf_url:
         description: "ELF URL (esp32-wifi-firmware.elf)"
         required: true
-        default: "https://github.com/bdring/FluidNC/releases/download/v4.0.2-pre3/esp32-wifi-firmware.elf"
+        default: "https://github.com/kxgx/FluidNC/releases/download/v4.0.2-pre3/esp32-wifi-firmware.elf"
         type: string
       toolchain_target:
         description: "Target toolchain (esp32 or esp32s3)"
