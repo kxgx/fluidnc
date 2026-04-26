@@ -25,12 +25,12 @@ axes:
     motor0:
       limit_neg_pin: NO_PIN
       limit_pos_pin: NO_PIN
-      limit_all_pin: gpio.5:pu:low
+      limit_all_pin: gpio.12:pu:low
       hard_limits: true
       pulloff_mm: 5
       standard_stepper:
-        step_pin: gpio.2
-        direction_pin: gpio.18:low
+        step_pin: gpio.7
+        direction_pin: gpio.14:low
         disable_pin: NO_PIN
   y:
     steps_per_mm: 1280
@@ -50,12 +50,12 @@ axes:
     motor0:
       limit_neg_pin: NO_PIN
       limit_pos_pin: NO_PIN
-      limit_all_pin: gpio.12:pu:low
+      limit_all_pin: gpio.5:pu:low
       hard_limits: true
       pulloff_mm: 5
       standard_stepper:
-        step_pin: gpio.7
-        direction_pin: gpio.14
+        step_pin: gpio.2
+        direction_pin: gpio.18
         disable_pin: NO_PIN
     motor1:
       limit_neg_pin: NO_PIN
